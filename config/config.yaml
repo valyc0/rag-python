@@ -1,0 +1,45 @@
+app:
+  host: 0.0.0.0
+  port: 8000
+  log_level: INFO
+
+documents:
+  path: ./documents
+  supported_extensions:
+    - .pdf
+    - .txt
+    - .docx
+    - .md
+
+chunking:
+  chunk_size_tokens: 700
+  overlap_tokens: 120
+  min_chunk_tokens: 80
+
+retrieval:
+  top_k: 5
+  dense_k: 8
+  bm25_k: 8
+  hybrid_alpha: 0.65
+  rerank: true
+
+context:
+  max_chars: 6000
+
+ollama:
+  base_url: http://localhost:11434
+  llm_model: llama3.2
+  embedding_model: nomic-embed-text
+  temperature: 0.1
+  top_p: 0.9
+  num_predict: 512
+  timeout_seconds: 120
+
+storage:
+  chroma_path: ./data/chroma
+  sqlite_path: ./data/state/index.db
+  cache_path: ./data/cache
+
+watch:
+  enabled: true
+  debounce_seconds: 2.0
