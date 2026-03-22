@@ -28,7 +28,7 @@ context:
 
 ollama:
   base_url: http://ollama:11434
-  llm_model: llama3.2
+  llm_model: qwen2.5:3b
   embedding_model: nomic-embed-text
   temperature: 0.1
   top_p: 0.9

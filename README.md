@@ -224,6 +224,8 @@ Usa:
 In piu':
 
 - verifica la disponibilita' di Qdrant prima di avviare l'API
+- legge `llm_model` e `embedding_model` da [config/config.prod.yaml](config/config.prod.yaml) o da `RAG_CONFIG_PATH`
+- scarica automaticamente in Ollama i modelli richiesti da quella configurazione
 - costruisce l'API con la configurazione production
 
 ### Quando usare l'uno o l'altro
@@ -255,9 +257,7 @@ Usa [start-prod.sh](start-prod.sh) quando vuoi:
 
 - Python 3.11+
 - Ollama gia' funzionante localmente
-- modelli disponibili in Ollama:
-  - `llama3.2`
-  - `nomic-embed-text`
+- modelli disponibili in Ollama coerenti con `ollama.llm_model` e `ollama.embedding_model` del file di configurazione usato
 
 ## Installazione consigliata con Docker
 
@@ -286,8 +286,8 @@ Questo comando:
 - crea le directory locali necessarie
 - avvia il container Ollama
 - verifica che Ollama risponda
-- scarica `llama3.2`
-- scarica `nomic-embed-text`
+- legge `llm_model` e `embedding_model` dal file di configurazione usato
+- scarica automaticamente i modelli richiesti in Ollama
 - avvia il container API
 
 ### 3.b Ferma tutto lo stack
