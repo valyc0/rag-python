@@ -66,6 +66,18 @@ class IngestResponse(BaseModel):
     chunks_written: int
 
 
+class IngestStatusResponse(BaseModel):
+    status: str
+    startup_indexing: bool
+    ingest_in_progress: bool
+    current_file: str | None
+    pending_files: list[str]
+    pending_count: int
+    last_completed_at: str | None
+    last_result: IngestResponse | None
+    last_error: str | None
+
+
 class HealthResponse(BaseModel):
     status: str
     llm_model: str

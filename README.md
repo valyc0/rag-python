@@ -5,8 +5,8 @@ Sistema RAG locale per interrogare documenti presenti su filesystem usando:
 - Ollama come runtime LLM locale
 - llama3.2 per la generazione delle risposte
 - nomic-embed-text per gli embedding
-- Chroma come vector store persistente
-- SQLite per stato, metadata e supporto al retrieval lessicale
+- Chroma oppure Qdrant come vector store persistente
+- SQLite oppure PostgreSQL per stato, metadata e supporto al retrieval lessicale
 - FastAPI per esporre API HTTP e streaming
 
 Per una descrizione architetturale piu' ampia, vedi anche [ARCHITETTURA_PROGETTO.md](ARCHITETTURA_PROGETTO.md).
@@ -59,15 +59,25 @@ Questo serve per trovare chunk semanticamente vicini a una domanda, anche quando
 
 Il progetto usa due livelli di persistenza:
 
+- un backend vettoriale, che puo' essere Chroma o Qdrant
+- un backend metadata, che puo' essere SQLite o PostgreSQL
+
+Nella configurazione standard il progetto usa:
+
 - Chroma per embedding e retrieval vettoriale
 - SQLite per file indicizzati, chunk, hash, metadata e supporto BM25
+
+Nella configurazione production il progetto usa invece:
+
+- Qdrant per embedding e retrieval vettoriale
+- PostgreSQL per stato, metadata e supporto BM25
 
 ### 4. Retrieval
 
 Quando arriva una query:
 
 1. la domanda viene convertita in embedding
-2. Chroma recupera i chunk semanticamente piu' simili
+2. il vector store configurato recupera i chunk semanticamente piu' simili
 3. il motore BM25 recupera chunk lessicalmente rilevanti
 4. i risultati vengono fusi e riordinati
 5. il contesto viene compresso per stare in una finestra utile
@@ -85,17 +95,149 @@ Il prompt istruisce il modello a:
 ## Componenti principali
 
 - [app/main.py](app/main.py): API FastAPI e lifecycle applicativo
-- [app/service.py](app/service.py): orchestration end-to-end di ingestion e query
+- [app/service.py](app/service.py): orchestration end-to-end di ingestion e query, con wiring dei backend configurati
 - [app/parsers.py](app/parsers.py): parsing dei formati supportati
 - [app/chunking.py](app/chunking.py): chunking con overlap e fallback robusto
 - [app/retrieval.py](app/retrieval.py): retrieval ibrido dense + BM25
-- [app/vector_store.py](app/vector_store.py): integrazione con Chroma
-- [app/repository.py](app/repository.py): persistenza SQLite
+- [app/vector_store.py](app/vector_store.py): integrazione con backend vettoriale Chroma o Qdrant
+- [app/repository.py](app/repository.py): persistenza metadata con backend SQLite o PostgreSQL
 - [app/ollama_client.py](app/ollama_client.py): chiamate HTTP a Ollama
 - [app/watcher.py](app/watcher.py): watcher filesystem per aggiornamenti automatici
 - [config/config.yaml](config/config.yaml): configurazione del progetto
-- [docker-compose.yml](docker-compose.yml): unico compose ufficiale del progetto
-- [start.sh](start.sh): startup semplificato dello stack
+- [config/config.prod.yaml](config/config.prod.yaml): configurazione della variante production
+- [docker-compose.yml](docker-compose.yml): stack standard per sviluppo locale
+- [docker-compose.prod.yml](docker-compose.prod.yml): stack production con servizi separati
+- [start.sh](start.sh): startup semplificato dello stack standard
+- [start-prod.sh](start-prod.sh): startup della variante production
+- [stop.sh](stop.sh): shutdown di entrambi gli stack
+
+## Cosa e' cambiato nel codice
+
+Il progetto non e' piu' limitato a un solo backend fisso. In origine il flusso applicativo assumeva sempre:
+
+- SQLite per metadata e stato
+- Chroma per il vector store
+
+Ora il codice e' stato rifattorizzato per supportare backend selezionabili via configurazione.
+
+### Backend configurabili
+
+La sezione `storage` della configurazione ora include parametri per scegliere i backend e i relativi endpoint:
+
+- `metadata_backend`: `sqlite` oppure `postgres`
+- `vector_backend`: `chroma` oppure `qdrant`
+- `postgres_dsn`
+- `qdrant_url`
+- `qdrant_api_key`
+- `qdrant_collection_name`
+- `qdrant_timeout_seconds`
+
+Questo permette allo stesso servizio applicativo di funzionare in due modalita' diverse senza cambiare la logica di business.
+
+### Repository metadata astratto
+
+La gestione dei metadata in [app/repository.py](app/repository.py) e' stata generalizzata:
+
+- `SqliteMetadataRepository` mantiene il comportamento originale basato su SQLite
+- `PostgresMetadataRepository` implementa lo stesso contratto su PostgreSQL
+- `MetadataRepository` sceglie automaticamente il backend corretto in base alla configurazione
+
+L'effetto pratico e' che ingestion, aggiornamento incrementale, cancellazione documenti e retrieval lessicale continuano a usare la stessa API interna, ma possono poggiare su un database diverso.
+
+### Vector store astratto
+
+Anche la persistenza vettoriale in [app/vector_store.py](app/vector_store.py) e' stata resa pluggable:
+
+- `ChromaVectorStore` copre il caso standard locale
+- `QdrantVectorStore` aggiunge supporto a un vector database server-based
+- `VectorStore` incapsula la scelta del backend attivo
+
+In questo modo query, upsert dei chunk e cancellazioni per file funzionano allo stesso modo per il resto del sistema, ma possono usare Chroma o Qdrant sotto il cofano.
+
+### Wiring del servizio
+
+In [app/service.py](app/service.py) il servizio principale inizializza repository e vector store leggendo i backend dalla configurazione. Questo e' il punto in cui il supporto multi-backend entra nel runtime reale.
+
+### Nuove dipendenze
+
+In [pyproject.toml](pyproject.toml) sono state aggiunte:
+
+- `psycopg[binary]` per PostgreSQL
+- `qdrant-client` per Qdrant
+
+Senza queste librerie il percorso production non sarebbe utilizzabile.
+
+## Variante produzione
+
+Per una variante piu' adatta alla produzione, il progetto include anche:
+
+- [docker-compose.prod.yml](docker-compose.prod.yml)
+- [config/config.prod.yaml](config/config.prod.yaml)
+- [start-prod.sh](start-prod.sh)
+- [PRODUCTION.md](PRODUCTION.md)
+
+Questa variante usa PostgreSQL per metadata e stato, e Qdrant come vector database server.
+
+## Start standard vs start production
+
+Il repository contiene due script di avvio per due scenari diversi.
+
+### `./start.sh`
+
+Usa lo stack standard definito in [docker-compose.yml](docker-compose.yml) ed e' pensato per sviluppo locale e setup semplice.
+
+Avvia:
+
+- `ollama`
+- `rag-api`
+
+Usa:
+
+- SQLite come metadata store
+- Chroma come vector store
+- watcher filesystem attivo
+
+Vantaggi:
+
+- meno componenti da gestire
+- startup piu' semplice
+- persistenza locale immediata su filesystem
+
+### `./start-prod.sh`
+
+Usa lo stack production definito in [docker-compose.prod.yml](docker-compose.prod.yml) ed e' pensato per un deployment piu' robusto.
+
+Avvia:
+
+- `postgres`
+- `qdrant`
+- `ollama`
+- `rag-api`
+
+Usa:
+
+- PostgreSQL come metadata store
+- Qdrant come vector store
+- watcher filesystem disabilitato
+
+In piu':
+
+- verifica la disponibilita' di Qdrant prima di avviare l'API
+- costruisce l'API con la configurazione production
+
+### Quando usare l'uno o l'altro
+
+Usa [start.sh](start.sh) quando vuoi:
+
+- sviluppare localmente
+- fare test veloci
+- mantenere una dipendenza minima dall'infrastruttura
+
+Usa [start-prod.sh](start-prod.sh) quando vuoi:
+
+- separare storage metadata e vector store in servizi dedicati
+- avvicinarti a un deployment persistente reale
+- evitare i limiti di un backend embedded su scenari piu' lunghi o piu' strutturati
 
 ## Requisiti
 
@@ -146,6 +288,19 @@ Questo comando:
 - scarica `llama3.2`
 - scarica `nomic-embed-text`
 - avvia il container API
+
+### 3.b Ferma tutto lo stack
+
+```bash
+chmod +x stop.sh
+./stop.sh
+```
+
+Per fermare anche i volumi nominati Docker del progetto:
+
+```bash
+./stop.sh --volumes
+```
 
 ### 4. Verifica lo stato dei container
 
@@ -225,7 +380,9 @@ I parametri piu' importanti sono:
 - modello LLM
 - modello embedding
 - timeout di Ollama
+- scelta dei backend storage
 - percorsi persistenti di Chroma, SQLite e cache
+- DSN PostgreSQL e impostazioni Qdrant
 
 Override supportati via variabili ambiente:
 
@@ -234,10 +391,26 @@ Override supportati via variabili ambiente:
 - `OLLAMA_LLM_MODEL`
 - `OLLAMA_EMBEDDING_MODEL`
 - `RAG_DOCUMENTS_PATH`
+- `RAG_METADATA_BACKEND`
+- `RAG_VECTOR_BACKEND`
 - `RAG_CHROMA_PATH`
 - `RAG_SQLITE_PATH`
+- `RAG_POSTGRES_DSN`
 - `RAG_CACHE_PATH`
+- `QDRANT_URL`
+- `QDRANT_API_KEY`
+- `QDRANT_COLLECTION_NAME`
+- `QDRANT_TIMEOUT_SECONDS`
 - `RAG_WATCH_ENABLED`
+
+### Configurazione standard e configurazione production
+
+- [config/config.yaml](config/config.yaml) e' la configurazione standard: SQLite + Chroma
+- [config/config.prod.yaml](config/config.prod.yaml) e' la configurazione production: PostgreSQL + Qdrant
+
+Nel setup production la password PostgreSQL di default e' `postgres`, sovrascrivibile con `POSTGRES_PASSWORD`.
+
+La differenza non e' solo infrastrutturale. Anche il codice applicativo e' stato adattato per poter istanziare il backend corretto a runtime.
 
 ## Directory usate dal progetto
 
@@ -256,6 +429,7 @@ Script disponibili:
 
 - [script/check_stack.sh](script/check_stack.sh): mostra lo stato dei container
 - [script/health.sh](script/health.sh): chiama `GET /health`
+- [script/ingest_status.sh](script/ingest_status.sh): mostra se l'indicizzazione e' in corso, il file corrente e la coda residua
 - [script/ollama_tags.sh](script/ollama_tags.sh): verifica i tag/modelli esposti da Ollama
 - [script/models.sh](script/models.sh): mostra i modelli disponibili dentro il container Ollama
 - [script/list_documents.sh](script/list_documents.sh): elenca i documenti indicizzati
@@ -270,6 +444,7 @@ Esempi rapidi:
 
 ```bash
 /home/valerio/lavoro/appo/git/rag/script/health.sh
+/home/valerio/lavoro/appo/git/rag/script/ingest_status.sh
 /home/valerio/lavoro/appo/git/rag/script/check_stack.sh
 /home/valerio/lavoro/appo/git/rag/script/list_documents.sh
 /home/valerio/lavoro/appo/git/rag/script/rescan.sh
@@ -282,6 +457,12 @@ Per bypassare la cache durante i test:
 
 ```bash
 USE_CACHE=false /home/valerio/lavoro/appo/git/rag/script/query_example.sh "A che temperatura c'e' pericolo di ghiaccio?"
+```
+
+Per controllare se il servizio sta ancora indicizzando documenti e quali file mancano:
+
+```bash
+curl http://localhost:8010/ingest/status | python3 -m json.tool
 ```
 
 ## Comandi di avvio e gestione

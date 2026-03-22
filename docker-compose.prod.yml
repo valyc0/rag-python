@@ -1,0 +1,90 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: rag-postgres
+    environment:
+      POSTGRES_DB: rag
+      POSTGRES_USER: rag
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  qdrant:
+    image: qdrant/qdrant:v1.13.4
+    container_name: rag-qdrant
+    ports:
+      - "${QDRANT_HOST_PORT:-6333}:6333"
+    volumes:
+      - qdrant_data:/qdrant/storage
+    restart: unless-stopped
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: rag-ollama
+    ports:
+      - "${OLLAMA_HOST_PORT:-11435}:11434"
+    dns:
+      - "1.1.1.1"
+      - "8.8.8.8"
+    volumes:
+      - ollama_data:/root/.ollama
+    restart: unless-stopped
+    environment:
+      OLLAMA_HOST: 0.0.0.0
+    command: serve
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  rag-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: rag-api
+    depends_on:
+      postgres:
+        condition: service_healthy
+      qdrant:
+        condition: service_started
+      ollama:
+        condition: service_healthy
+    ports:
+      - "${RAG_API_HOST_PORT:-8010}:8000"
+    dns:
+      - "1.1.1.1"
+      - "8.8.8.8"
+    volumes:
+      - ./documents:/app/documents
+      - ./config:/app/config:ro
+      - rag_api_data:/app/data
+    environment:
+      RAG_CONFIG_PATH: /app/config/config.prod.yaml
+      OLLAMA_BASE_URL: http://ollama:11434
+      RAG_DOCUMENTS_PATH: /app/documents
+      RAG_METADATA_BACKEND: postgres
+      RAG_VECTOR_BACKEND: qdrant
+      RAG_POSTGRES_DSN: postgresql://rag:${POSTGRES_PASSWORD:-postgres}@postgres:5432/rag
+      QDRANT_URL: http://qdrant:6333
+      QDRANT_COLLECTION_NAME: rag_chunks
+      RAG_CACHE_PATH: /app/data/cache
+      RAG_WATCH_ENABLED: "false"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8000/health >/dev/null || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  postgres_data:
+  qdrant_data:
+  ollama_data:
+  rag_api_data:

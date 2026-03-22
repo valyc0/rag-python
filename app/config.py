@@ -48,9 +48,16 @@ class OllamaSettings(BaseModel):
 
 
 class StorageSettings(BaseModel):
+    metadata_backend: str = "sqlite"
+    vector_backend: str = "chroma"
     chroma_path: str = "./data/chroma"
     sqlite_path: str = "./data/state/index.db"
+    postgres_dsn: str = "postgresql://rag:rag@postgres:5432/rag"
     cache_path: str = "./data/cache"
+    qdrant_url: str = "http://qdrant:6333"
+    qdrant_api_key: str = ""
+    qdrant_collection_name: str = "rag_chunks"
+    qdrant_timeout_seconds: int = 30
 
 
 class WatchSettings(BaseModel):
@@ -89,7 +96,14 @@ def _apply_env_overrides(config: dict[str, Any]) -> dict[str, Any]:
         "OLLAMA_EMBEDDING_MODEL": ("ollama", "embedding_model"),
         "RAG_CHROMA_PATH": ("storage", "chroma_path"),
         "RAG_SQLITE_PATH": ("storage", "sqlite_path"),
+        "RAG_METADATA_BACKEND": ("storage", "metadata_backend"),
+        "RAG_VECTOR_BACKEND": ("storage", "vector_backend"),
+        "RAG_POSTGRES_DSN": ("storage", "postgres_dsn"),
         "RAG_CACHE_PATH": ("storage", "cache_path"),
+        "QDRANT_URL": ("storage", "qdrant_url"),
+        "QDRANT_API_KEY": ("storage", "qdrant_api_key"),
+        "QDRANT_COLLECTION_NAME": ("storage", "qdrant_collection_name"),
+        "QDRANT_TIMEOUT_SECONDS": ("storage", "qdrant_timeout_seconds"),
         "RAG_WATCH_ENABLED": ("watch", "enabled"),
     }
     for env_name, path in env_map.items():

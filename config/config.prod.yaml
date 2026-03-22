@@ -4,7 +4,7 @@ app:
   log_level: INFO
 
 documents:
-  path: ./documents
+  path: /app/documents
   supported_extensions:
     - .pdf
     - .txt
@@ -27,7 +27,7 @@ context:
   max_chars: 6000
 
 ollama:
-  base_url: http://localhost:11434
+  base_url: http://ollama:11434
   llm_model: llama3.2
   embedding_model: nomic-embed-text
   temperature: 0.1
@@ -36,17 +36,17 @@ ollama:
   timeout_seconds: 120
 
 storage:
-  metadata_backend: sqlite
-  vector_backend: chroma
-  chroma_path: ./data/chroma
-  sqlite_path: ./data/state/index.db
-  postgres_dsn: postgresql://rag:rag@postgres:5432/rag
-  cache_path: ./data/cache
+  metadata_backend: postgres
+  vector_backend: qdrant
+  chroma_path: /app/data/chroma
+  sqlite_path: /app/data/state/index.db
+  postgres_dsn: postgresql://rag:postgres@postgres:5432/rag
+  cache_path: /app/data/cache
   qdrant_url: http://qdrant:6333
   qdrant_api_key: ""
   qdrant_collection_name: rag_chunks
   qdrant_timeout_seconds: 30
 
 watch:
-  enabled: true
+  enabled: false
   debounce_seconds: 2.0
