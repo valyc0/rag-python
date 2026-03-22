@@ -403,6 +403,7 @@ Override supportati via variabili ambiente:
 - `QDRANT_COLLECTION_NAME`
 - `QDRANT_TIMEOUT_SECONDS`
 - `RAG_INGEST_CONCURRENT_FILES`
+- `RAG_QUERY_STOPWORDS`
 - `RAG_WATCH_ENABLED`
 
 ### Configurazione standard e configurazione production
@@ -413,6 +414,7 @@ Override supportati via variabili ambiente:
 Nel setup production la password PostgreSQL di default e' `postgres`, sovrascrivibile con `POSTGRES_PASSWORD`.
 
 La concorrenza di ingest dei file e' configurabile con `ingest.concurrent_files` oppure `RAG_INGEST_CONCURRENT_FILES`; il default e' `2`.
+Le stopword usate nel matching lessicale delle domande sono configurabili con `retrieval.stopwords` oppure `RAG_QUERY_STOPWORDS` come lista separata da virgole.
 
 La differenza non e' solo infrastrutturale. Anche il codice applicativo e' stato adattato per poter istanziare il backend corretto a runtime.
 

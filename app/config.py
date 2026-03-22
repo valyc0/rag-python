@@ -31,6 +31,31 @@ class RetrievalSettings(BaseModel):
     bm25_k: int = 8
     hybrid_alpha: float = 0.65
     rerank: bool = True
+    stopwords: list[str] = Field(
+        default_factory=lambda: [
+            "che",
+            "con",
+            "come",
+            "cosa",
+            "dove",
+            "quando",
+            "quale",
+            "quali",
+            "della",
+            "delle",
+            "degli",
+            "dello",
+            "dell",
+            "sullo",
+            "sulla",
+            "sulle",
+            "negli",
+            "nelle",
+            "dallo",
+            "dalla",
+            "dalle",
+        ]
+    )
 
 
 class ContextSettings(BaseModel):
@@ -110,6 +135,7 @@ def _apply_env_overrides(config: dict[str, Any]) -> dict[str, Any]:
         "QDRANT_COLLECTION_NAME": ("storage", "qdrant_collection_name"),
         "QDRANT_TIMEOUT_SECONDS": ("storage", "qdrant_timeout_seconds"),
         "RAG_INGEST_CONCURRENT_FILES": ("ingest", "concurrent_files"),
+        "RAG_QUERY_STOPWORDS": ("retrieval", "stopwords"),
         "RAG_WATCH_ENABLED": ("watch", "enabled"),
     }
     for env_name, path in env_map.items():
@@ -119,6 +145,9 @@ def _apply_env_overrides(config: dict[str, Any]) -> dict[str, Any]:
         for key in path[:-1]:
             current = current.setdefault(key, {})
         raw_value = os.environ[env_name]
+        if env_name == "RAG_QUERY_STOPWORDS":
+            current[path[-1]] = [item.strip() for item in raw_value.split(",") if item.strip()]
+            continue
         if raw_value.lower() in {"true", "false"}:
             current[path[-1]] = raw_value.lower() == "true"
         elif raw_value.isdigit():

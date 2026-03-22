@@ -27,6 +27,7 @@ FALLBACK_ANSWER = "Non lo so in base ai documenti forniti."
 class RagService:
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
+        self.question_stopwords = frozenset(term.lower() for term in settings.retrieval.stopwords)
         self.repository = MetadataRepository(
             sqlite_path=settings.storage.sqlite_path,
             metadata_backend=settings.storage.metadata_backend,
@@ -226,7 +227,7 @@ class RagService:
             num_predict=self.settings.ollama.num_predict,
         )
         if self._should_retry_extractive(answer, selected_hits, question):
-            focused_hits = selected_hits[:2]
+            focused_hits = selected_hits[:1]
             context, prompt = build_prompt(question, focused_hits, extractive=True)
             retry_answer = await self.client.generate(
                 model=self.settings.ollama.llm_model,
@@ -294,8 +295,8 @@ class RagService:
             return False
         if normalized_answer != FALLBACK_ANSWER and not normalized_answer.lower().startswith("non so"):
             return False
-        question_terms = {token for token in re.findall(r"\w+", question.lower()) if len(token) > 2}
-        candidate_text = " ".join(hit.text.lower() for hit in hits[:2])
+        question_terms = self._question_terms(question)
+        candidate_text = " ".join(self._normalize_extractive_text(hit.text).lower() for hit in hits[:2])
         has_numeric_signal = bool(re.search(r"\d+\s*(?:°c|c|km|kg|v|bar|%)", candidate_text))
         has_term_overlap = any(term in candidate_text for term in question_terms)
         return has_numeric_signal or has_term_overlap
@@ -306,13 +307,14 @@ class RagService:
         if not answer.strip().lower().startswith("non so"):
             return None
 
-        question_terms = {token for token in re.findall(r"\w+", question.lower()) if len(token) > 2}
+        question_terms = self._question_terms(question)
         best_sentence: str | None = None
         best_hit: SearchHit | None = None
         best_score = 0
 
         for hit in hits[:2]:
-            sentences = [segment.strip() for segment in re.split(r"(?<=[.!?])\s+", hit.text) if segment.strip()]
+            normalized_text = self._normalize_extractive_text(hit.text)
+            sentences = [segment.strip() for segment in re.split(r"(?<=[.!?])\s+", normalized_text) if segment.strip()]
             for sentence in sentences:
                 sentence_lower = sentence.lower()
                 overlap = sum(1 for term in question_terms if term in sentence_lower)
@@ -330,6 +332,17 @@ class RagService:
             f"{best_sentence.strip()} "
             f"Fonte: {best_hit.metadata['file_name']}, pagina {best_hit.metadata['page_number']}."
         )
+
+    def _question_terms(self, question: str) -> set[str]:
+        return {
+            token
+            for token in re.findall(r"\w+", question.lower())
+            if len(token) > 2 and token not in self.question_stopwords
+        }
+
+    def _normalize_extractive_text(self, text: str) -> str:
+        # Rejoin PDF line-break hyphenation so lexical matching sees whole words.
+        return re.sub(r"(?<=\w)-\s+(?=\w)", "", text)
 
     async def _embed_in_batches(self, texts: list[str], batch_size: int) -> list[list[float]]:
         embeddings: list[list[float]] = []
