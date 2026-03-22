@@ -60,6 +60,10 @@ class StorageSettings(BaseModel):
     qdrant_timeout_seconds: int = 30
 
 
+class IngestSettings(BaseModel):
+    concurrent_files: int = Field(default=2, ge=1)
+
+
 class WatchSettings(BaseModel):
     enabled: bool = True
     debounce_seconds: float = 2.0
@@ -73,6 +77,7 @@ class Settings(BaseModel):
     context: ContextSettings = Field(default_factory=ContextSettings)
     ollama: OllamaSettings = Field(default_factory=OllamaSettings)
     storage: StorageSettings = Field(default_factory=StorageSettings)
+    ingest: IngestSettings = Field(default_factory=IngestSettings)
     watch: WatchSettings = Field(default_factory=WatchSettings)
 
 
@@ -104,6 +109,7 @@ def _apply_env_overrides(config: dict[str, Any]) -> dict[str, Any]:
         "QDRANT_API_KEY": ("storage", "qdrant_api_key"),
         "QDRANT_COLLECTION_NAME": ("storage", "qdrant_collection_name"),
         "QDRANT_TIMEOUT_SECONDS": ("storage", "qdrant_timeout_seconds"),
+        "RAG_INGEST_CONCURRENT_FILES": ("ingest", "concurrent_files"),
         "RAG_WATCH_ENABLED": ("watch", "enabled"),
     }
     for env_name, path in env_map.items():

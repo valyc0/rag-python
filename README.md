@@ -381,6 +381,7 @@ I parametri piu' importanti sono:
 - modello embedding
 - timeout di Ollama
 - scelta dei backend storage
+- concorrenza ingest dei file
 - percorsi persistenti di Chroma, SQLite e cache
 - DSN PostgreSQL e impostazioni Qdrant
 
@@ -401,6 +402,7 @@ Override supportati via variabili ambiente:
 - `QDRANT_API_KEY`
 - `QDRANT_COLLECTION_NAME`
 - `QDRANT_TIMEOUT_SECONDS`
+- `RAG_INGEST_CONCURRENT_FILES`
 - `RAG_WATCH_ENABLED`
 
 ### Configurazione standard e configurazione production
@@ -409,6 +411,8 @@ Override supportati via variabili ambiente:
 - [config/config.prod.yaml](config/config.prod.yaml) e' la configurazione production: PostgreSQL + Qdrant
 
 Nel setup production la password PostgreSQL di default e' `postgres`, sovrascrivibile con `POSTGRES_PASSWORD`.
+
+La concorrenza di ingest dei file e' configurabile con `ingest.concurrent_files` oppure `RAG_INGEST_CONCURRENT_FILES`; il default e' `2`.
 
 La differenza non e' solo infrastrutturale. Anche il codice applicativo e' stato adattato per poter istanziare il backend corretto a runtime.
 
@@ -433,6 +437,7 @@ Script disponibili:
 - [script/ollama_tags.sh](script/ollama_tags.sh): verifica i tag/modelli esposti da Ollama
 - [script/models.sh](script/models.sh): mostra i modelli disponibili dentro il container Ollama
 - [script/list_documents.sh](script/list_documents.sh): elenca i documenti indicizzati
+- [script/delete_document.sh](script/delete_document.sh): elimina un documento da documents e lancia la rescan
 - [script/rescan.sh](script/rescan.sh): forza la nuova scansione dei documenti
 - [script/logs_api.sh](script/logs_api.sh): segue i log dell'API
 - [script/logs_ollama.sh](script/logs_ollama.sh): segue i log di Ollama
@@ -447,6 +452,7 @@ Esempi rapidi:
 /home/valerio/lavoro/appo/git/rag/script/ingest_status.sh
 /home/valerio/lavoro/appo/git/rag/script/check_stack.sh
 /home/valerio/lavoro/appo/git/rag/script/list_documents.sh
+/home/valerio/lavoro/appo/git/rag/script/delete_document.sh "1Samuele.pdf"
 /home/valerio/lavoro/appo/git/rag/script/rescan.sh
 /home/valerio/lavoro/appo/git/rag/script/query_example.sh "Riassumi i documenti indicizzati"
 /home/valerio/lavoro/appo/git/rag/script/query_debug.sh "A che temperatura c'e' pericolo di ghiaccio?"
@@ -464,6 +470,14 @@ Per controllare se il servizio sta ancora indicizzando documenti e quali file ma
 ```bash
 curl http://localhost:8010/ingest/status | python3 -m json.tool
 ```
+
+Per eliminare un documento indicizzato senza rimuoverlo manualmente dalla cartella:
+
+```bash
+/home/valerio/lavoro/appo/git/rag/script/delete_document.sh "1Samuele.pdf"
+```
+
+Con ingest parallelo, l'endpoint espone anche `current_files` e `max_concurrent_files`.
 
 ## Comandi di avvio e gestione
 

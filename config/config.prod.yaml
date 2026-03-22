@@ -47,6 +47,9 @@ storage:
   qdrant_collection_name: rag_chunks
   qdrant_timeout_seconds: 30
 
+ingest:
+  concurrent_files: 2
+
 watch:
   enabled: false
   debounce_seconds: 2.0

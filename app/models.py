@@ -71,8 +71,10 @@ class IngestStatusResponse(BaseModel):
     startup_indexing: bool
     ingest_in_progress: bool
     current_file: str | None
+    current_files: list[str]
     pending_files: list[str]
     pending_count: int
+    max_concurrent_files: int
     last_completed_at: str | None
     last_result: IngestResponse | None
     last_error: str | None

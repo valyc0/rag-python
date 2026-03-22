@@ -75,6 +75,7 @@ services:
       QDRANT_URL: http://qdrant:6333
       QDRANT_COLLECTION_NAME: rag_chunks
       RAG_CACHE_PATH: /app/data/cache
+      RAG_INGEST_CONCURRENT_FILES: ${RAG_INGEST_CONCURRENT_FILES:-2}
       RAG_WATCH_ENABLED: "false"
     restart: unless-stopped
     healthcheck:

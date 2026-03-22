@@ -64,15 +64,17 @@ curl http://localhost:6333/collections
 - `RAG_API_HOST_PORT`
 - `OLLAMA_HOST_PORT`
 - `QDRANT_HOST_PORT`
+- `RAG_INGEST_CONCURRENT_FILES`
 
 La password di default del setup production e' `postgres`.
+La concorrenza di ingest dei file e' `2` di default.
 
 ## Note operative
 
 - i documenti restano montati da [documents](documents)
 - i dati persistenti stanno nei volumi Docker `postgres_data`, `qdrant_data`, `ollama_data`, `rag_api_data`
 - il watcher filesystem e' disabilitato in prod; usa rescan esplicito quando aggiungi documenti
-- per vedere se l'indicizzazione e' in corso usa `GET /ingest/status`; l'endpoint espone file corrente e coda residua
+- per vedere se l'indicizzazione e' in corso usa `GET /ingest/status`; l'endpoint espone file correnti, coda residua e concorrenza massima
 
 ## Rescan e query
 
@@ -81,4 +83,10 @@ curl -X POST http://localhost:8010/ingest/rescan
 curl -s -X POST http://localhost:8010/query \
   -H "Content-Type: application/json" \
   -d '{"question":"Riassumi il documento"}' | python3 -m json.tool
+```
+
+Per eliminare un documento dal corpus host e aggiornare subito l'indice:
+
+```bash
+./script/delete_document.sh "1Samuele.pdf"
 ```

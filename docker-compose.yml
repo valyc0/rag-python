@@ -37,6 +37,7 @@ services:
       RAG_CHROMA_PATH: /app/data/chroma
       RAG_SQLITE_PATH: /app/data/state/index.db
       RAG_CACHE_PATH: /app/data/cache
+      RAG_INGEST_CONCURRENT_FILES: ${RAG_INGEST_CONCURRENT_FILES:-2}
       RAG_WATCH_ENABLED: "true"
     restart: unless-stopped
 

@@ -55,7 +55,7 @@ class RagService:
         self.cache = Cache(settings.storage.cache_path)
         self._ingest_lock = asyncio.Lock()
         self._ingest_in_progress = False
-        self._ingest_current_file: str | None = None
+        self._ingest_active_files: set[str] = set()
         self._ingest_pending_files: list[str] = []
         self._last_ingest_completed_at: str | None = None
         self._last_ingest_result: IngestResponse | None = None
@@ -64,7 +64,7 @@ class RagService:
     async def rescan_documents(self) -> IngestResponse:
         async with self._ingest_lock:
             self._ingest_in_progress = True
-            self._ingest_current_file = None
+            self._ingest_active_files.clear()
             self._ingest_pending_files = []
             self._last_ingest_error = None
             try:
@@ -99,29 +99,44 @@ class RagService:
                     self.repository.delete_file(removed_path)
                     removed_files += 1
 
-                for index, (path, file_hash) in enumerate(planned_files):
-                    self._ingest_current_file = str(path)
-                    self._ingest_pending_files = [str(item[0]) for item in planned_files[index + 1 :]]
-                    logger.info("Indexing file: %s", path)
-                    pages = parse_file(path)
-                    chunks = self.chunker.chunk_pages(path, pages)
-                    if not chunks:
-                        skipped_files += 1
-                        continue
+                semaphore = asyncio.Semaphore(self.settings.ingest.concurrent_files)
 
-                    texts = [chunk.text for chunk in chunks]
-                    embeddings = await self._embed_in_batches(texts, batch_size=16)
-                    self.vector_store.delete_by_source(str(path))
-                    self.vector_store.upsert_chunks(chunks, embeddings)
-                    self.repository.replace_chunks_for_file(str(path), chunks)
-                    self.repository.upsert_file(
-                        str(path),
-                        file_hash,
-                        path.stat().st_mtime,
-                        datetime.now(UTC).isoformat(),
-                    )
-                    indexed_files += 1
-                    chunks_written += len(chunks)
+                async def process_file(path: Path, file_hash: str) -> tuple[str, int]:
+                    async with semaphore:
+                        file_path = str(path)
+                        self._mark_ingest_started(file_path)
+                        try:
+                            logger.info("Indexing file: %s", path)
+                            pages = await asyncio.to_thread(parse_file, path)
+                            chunks = await asyncio.to_thread(self.chunker.chunk_pages, path, pages)
+                            if not chunks:
+                                return ("skipped", 0)
+
+                            texts = [chunk.text for chunk in chunks]
+                            embeddings = await self._embed_in_batches(texts, batch_size=16)
+                            self.vector_store.delete_by_source(file_path)
+                            self.vector_store.upsert_chunks(chunks, embeddings)
+                            self.repository.replace_chunks_for_file(file_path, chunks)
+                            self.repository.upsert_file(
+                                file_path,
+                                file_hash,
+                                path.stat().st_mtime,
+                                datetime.now(UTC).isoformat(),
+                            )
+                            return ("indexed", len(chunks))
+                        finally:
+                            self._mark_ingest_finished(file_path)
+
+                results = await asyncio.gather(
+                    *(process_file(path, file_hash) for path, file_hash in planned_files)
+                )
+
+                for outcome, written_chunks in results:
+                    if outcome == "indexed":
+                        indexed_files += 1
+                        chunks_written += written_chunks
+                    elif outcome == "skipped":
+                        skipped_files += 1
 
                 response = IngestResponse(
                     scanned_files=len(discovered_files),
@@ -138,7 +153,7 @@ class RagService:
                 raise
             finally:
                 self._ingest_in_progress = False
-                self._ingest_current_file = None
+                self._ingest_active_files.clear()
                 self._ingest_pending_files = []
 
     async def answer_question(
@@ -343,14 +358,25 @@ class RagService:
         return self.repository.list_files()
 
     def get_ingest_status(self, *, startup_indexing: bool) -> IngestStatusResponse:
+        current_files = sorted(self._ingest_active_files)
         return IngestStatusResponse(
             status="indexing" if self._ingest_in_progress or startup_indexing else "idle",
             startup_indexing=startup_indexing,
             ingest_in_progress=self._ingest_in_progress,
-            current_file=self._ingest_current_file,
+            current_file=current_files[0] if current_files else None,
+            current_files=current_files,
             pending_files=list(self._ingest_pending_files),
             pending_count=len(self._ingest_pending_files),
+            max_concurrent_files=self.settings.ingest.concurrent_files,
             last_completed_at=self._last_ingest_completed_at,
             last_result=self._last_ingest_result,
             last_error=self._last_ingest_error,
         )
+
+    def _mark_ingest_started(self, file_path: str) -> None:
+        if file_path in self._ingest_pending_files:
+            self._ingest_pending_files.remove(file_path)
+        self._ingest_active_files.add(file_path)
+
+    def _mark_ingest_finished(self, file_path: str) -> None:
+        self._ingest_active_files.discard(file_path)
