@@ -110,6 +110,7 @@ Il prompt istruisce il modello a:
 - [start.sh](start.sh): startup semplificato dello stack standard
 - [start-prod.sh](start-prod.sh): startup della variante production
 - [stop.sh](stop.sh): shutdown di entrambi gli stack
+- [remove_all.sh](remove_all.sh): rimozione completa di stack e volumi Docker
 
 ## Cosa e' cambiato nel codice
 
@@ -300,6 +301,13 @@ Per fermare anche i volumi nominati Docker del progetto:
 
 ```bash
 ./stop.sh --volumes
+```
+
+Se vuoi invece distruggere direttamente tutto lo stack standard e production con `compose down -v`:
+
+```bash
+chmod +x remove_all.sh
+./remove_all.sh
 ```
 
 ### 4. Verifica lo stato dei container
